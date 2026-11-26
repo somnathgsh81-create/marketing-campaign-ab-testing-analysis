@@ -1,0 +1,156 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import scipy.stats as st
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score, mean_squared_error
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import coint
+import warnings
+warnings.filterwarnings('ignore')
+
+df = pd.read_csv(r'E:/SOM PERSONAL/Project 4/marketing_campaign.csv')
+df.head()
+df.shape
+df.dtypes
+
+df['Date'] = pd.to_datetime(df['Date'], format='mixed')
+df.describe()
+
+plt.figure(figsize=(15, 6))
+plt.subplot(1, 2, 1)
+plt.title('Facebook Ad Clicks')
+sns.histplot(df['Facebook Ad Clicks'], bins=7, edgecolor='k', kde=True)
+plt.subplot(1, 2, 2)
+plt.title('Facebook Ad Conversions')
+sns.histplot(df['Facebook Ad Conversions'], bins=7, edgecolor='k', kde=True)
+plt.show()
+
+plt.figure(figsize=(15, 6))
+plt.subplot(1, 2, 1)
+plt.title('AdWords Ad Clicks')
+sns.histplot(df['AdWords Ad Clicks'], bins=7, edgecolor='k', kde=True)
+plt.subplot(1, 2, 2)
+plt.title('AdWords Ad Conversions')
+sns.histplot(df['AdWords Ad Conversions'], bins=7, edgecolor='k', kde=True)
+plt.show()
+
+def create_conversion_category(conversion_col):
+    category = []
+    for conversion in df[conversion_col]:
+        if conversion < 6:
+            category.append('less than 6')
+        elif 6 <= conversion < 11:
+            category.append('6-10')
+        elif 11 <= conversion < 16:
+            category.append('11-15')
+        else:
+            category.append('more than 15')
+    return category
+
+df['Facebook Conversion Category'] = create_conversion_category('Facebook Ad Conversions')
+df['AdWords Conversion Category'] = create_conversion_category('AdWords Ad Conversions')
+
+df[['Facebook Ad Conversions', 'Facebook Conversion Category', 'AdWords Ad Conversions', 'AdWords Conversion Category']].head()
+df['Facebook Conversion Category'].value_counts()
+df['AdWords Conversion Category'].value_counts()
+
+facebook = pd.DataFrame(df['Facebook Conversion Category'].value_counts()).reset_index().rename(columns={'Facebook Conversion Category': 'Category'})
+adwords = pd.DataFrame(df['AdWords Conversion Category'].value_counts()).reset_index().rename(columns={'AdWords Conversion Category': 'Category'})
+category_df = pd.merge(facebook, adwords, on='Category', how='outer').fillna(0)
+
+X_axis = np.arange(len(category_df))
+plt.figure(figsize=(15, 6))
+plt.bar(X_axis - 0.2, category_df['count_x'], 0.4, label='Facebook', color='#03989E', linewidth=1, edgecolor='k')
+plt.bar(X_axis + 0.2, category_df['count_y'], 0.4, label='Adwords', color='#A62372', linewidth=1, edgecolor='k')
+plt.xticks(X_axis, category_df['Category'])
+plt.xlabel("Conversion Category")
+plt.ylabel("Number of days")
+plt.title("Frequency of Daily Conversions by Conversion Categories", fontsize=15)
+plt.legend(fontsize=15)
+plt.show()
+
+plt.figure(figsize=(15, 6))
+plt.subplot(1, 2, 1)
+plt.title('Facebook')
+sns.scatterplot(x=df['Facebook Ad Clicks'], y=df['Facebook Ad Conversions'], color='#03989E')
+plt.xlabel('Clicks')
+plt.ylabel('Conversions')
+plt.subplot(1, 2, 2)
+plt.title('AdWords')
+sns.scatterplot(x=df['AdWords Ad Clicks'], y=df['AdWords Ad Conversions'], color='#03989E')
+plt.xlabel('Clicks')
+plt.ylabel('Conversions')
+plt.show()
+
+facebook_corr = df[['Facebook Ad Conversions', 'Facebook Ad Clicks']].corr()
+adwords_corr = df[['AdWords Ad Conversions', 'AdWords Ad Clicks']].corr()
+
+print('Correlation Coeff \n--------------')
+print('Facebook :', round(facebook_corr.values, 2))
+print('AdWords : ', round(adwords_corr.values, 2))
+
+print('Mean Conversion \n---------')
+print('Facebook :', round(df['Facebook Ad Conversions'].mean(), 2))
+print('AdWords :', round(df['AdWords Ad Conversions'].mean(), 2))
+
+t_stats, p_value = st.ttest_ind(a=df['Facebook Ad Conversions'], b=df['AdWords Ad Conversions'], equal_var=False)
+print('\nT statistic', t_stats, '\np-value', p_value)
+if p_value < 0.05:
+    print("\np-value is less than significance value, Reject the null hypothesis")
+else:
+    print("\np-value is greater than significance value, Accept the null hypothesis")
+
+X = df[['Facebook Ad Clicks']]
+y = df[['Facebook Ad Conversions']]
+
+reg_model = LinearRegression()
+reg_model.fit(X, y)
+prediction = reg_model.predict(X)
+
+r2 = r2_score(y, prediction) * 100
+mse = mean_squared_error(y, prediction)
+print('Accuracy (R2 Score):', round(r2, 2), '%')
+print('Mean Squared Error:', round(mse, 2))
+
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x=df['Facebook Ad Clicks'], y=df['Facebook Ad Conversions'], color='#03989E', label='Actual data points')
+plt.plot(df['Facebook Ad Clicks'], prediction, color='#A62372', label='Best fit line')
+plt.legend()
+plt.show()
+
+df['Facebook Click-Through Rate (Clicks / View)'] = df['Facebook Click-Through Rate (Clicks / View)'].apply(lambda x: float(x[:-1]))
+df['Facebook Conversion Rate (Conversions / Clicks)'] = df['Facebook Conversion Rate (Conversions / Clicks)'].apply(lambda x: float(x[:-1]))
+df['Facebook Cost per Click (Ad Cost / Clicks)'] = df['Facebook Cost per Click (Ad Cost / Clicks)'].apply(lambda x: float(x[1:]))
+df['Cost per Facebook Ad'] = df['Cost per Facebook Ad'].apply(lambda x: float(x[1:]))
+
+df = df[['Date', 'Facebook Ad Views',
+         'Facebook Ad Clicks', 'Facebook Ad Conversions', 'Cost per Facebook Ad',
+         'Facebook Click-Through Rate (Clicks / View)',
+         'Facebook Conversion Rate (Conversions / Clicks)',
+         'Facebook Cost per Click (Ad Cost / Clicks)']]
+
+df['month'] = df['Date'].dt.month
+df['week'] = df['Date'].dt.weekday
+
+plt.figure(figsize=(8, 5))
+plt.title('Weekly Conversions')
+weekly_conversion = df.groupby('week')[['Facebook Ad Conversions']].sum()
+week_names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+plt.bar(week_names, weekly_conversion['Facebook Ad Conversions'], color='#03989E', edgecolor='k')
+plt.show()
+
+plt.figure(figsize=(8, 5))
+plt.title('Monthly Conversions')
+monthly_conversion = df.groupby('month')[['Facebook Ad Conversions']].sum()
+month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+plt.plot(month_names, monthly_conversion['Facebook Ad Conversions'], '-o', color='#A62372')
+plt.show()
+
+plt.figure(figsize=(8, 5))
+plt.title('Monthly Cost Per Conversion (CPC)')
+monthly_df = df.groupby('month')[['Facebook Ad Conversions', 'Cost per Facebook Ad']].sum()
+monthly_df['Cost per Conversion'] = monthly_df['Cost per Facebook Ad'] / monthly_df['Facebook Ad Conversions']
+plt.plot(month_names, monthly_df['Cost per Conversion'], '-o', color='#A62372')
+plt.show()
